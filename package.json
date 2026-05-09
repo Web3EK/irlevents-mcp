@@ -4,7 +4,7 @@
   "description": "Model Context Protocol server for IRLEvents — token-gated event platform tools for Claude Desktop, Claude Code, Cursor, Cline, and other MCP-compatible clients.",
   "type": "module",
   "bin": {
-    "irlevents-mcp": "./dist/index.js"
+    "irlevents-mcp": "dist/index.js"
   },
   "main": "./dist/index.js",
   "scripts": {
