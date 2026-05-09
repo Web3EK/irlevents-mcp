@@ -10,6 +10,8 @@ and more — all on your behalf, using a long-lived `api_*` key you control.
 
 ## Tools exposed
 
+### Discovery + attendee tools (require `events:read` / `rsvp:write` / `profile:*`)
+
 | Tool | What it does |
 |---|---|
 | `list_events` | List public events with filters (category, city, chainId, date range) |
@@ -24,6 +26,15 @@ and more — all on your behalf, using a long-lived `api_*` key you control.
 | `rsvp_event` | RSVP on my behalf (locks the qualifying token) |
 | `cancel_rsvp` | Cancel my RSVP, free the locked token |
 | `my_eligible_events` | Every public event a wallet currently qualifies for |
+
+### Host tools (v0.2.0+, require `events:write`)
+
+| Tool | What it does |
+|---|---|
+| `create_event` | Create a new event (subject to your subscription tier limits) |
+| `update_event` | Update fields on an event you host (partial updates supported) |
+| `delete_event` | Permanently delete an event (destructive — prefer "cancelled" status via update) |
+| `checkin_attendee` | Mark an attendee as checked in at the door |
 
 Sensitive actions (key management, billing, 2FA, OAuth unlink, account delete)
 are **not** exposed — those still require a browser session at irlevents.io.

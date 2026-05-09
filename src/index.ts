@@ -290,13 +290,134 @@ server.registerTool(
     ),
 );
 
+// ----- Host tools (require events:write scope) -------------------------
+
+server.registerTool(
+  "create_event",
+  {
+    title: "Create an event",
+    description:
+      "Create a new event hosted by the api-key owner. Requires the `events:write` scope. " +
+      "Subject to the user's subscription tier limits (free / pro / business). " +
+      "At minimum supply title, date, and location; everything else is optional. " +
+      "Token gates can be added at create time via the `gates` field or set later via update_event.",
+    inputSchema: {
+      title: z.string().describe("Event title"),
+      date: z.string().describe("ISO date YYYY-MM-DD"),
+      location: z.string().describe("Human-readable location, e.g. 'Las Vegas, NV' or a venue name"),
+      description: z.string().optional(),
+      endDate: z.string().optional().describe("ISO date for multi-day events"),
+      time: z.string().optional().describe("Start time, e.g. '6:00 PM'"),
+      endTime: z.string().optional(),
+      timezone: z.string().optional().describe("IANA timezone e.g. 'America/Los_Angeles'"),
+      venueName: z.string().optional(),
+      capacity: z.number().int().optional(),
+      category: z.string().optional().describe("e.g. 'meetup', 'conference', 'workshop'"),
+      imageUrl: z.string().optional(),
+      gates: z
+        .object({
+          mode: z.enum(["any", "all"]).optional(),
+          groups: z.array(z.any()),
+        })
+        .optional()
+        .describe("Token gate config — see /api/guides/agent-guide for the schema"),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  },
+  async (args) =>
+    handle(() =>
+      client.request("/api/events", { method: "POST", body: JSON.stringify(args) }),
+    ),
+);
+
+server.registerTool(
+  "update_event",
+  {
+    title: "Update an event",
+    description:
+      "Update fields on an event the api-key owner hosts (or co-hosts). Requires `events:write`. " +
+      "Send only the fields you want to change — omitted fields are left untouched.",
+    inputSchema: {
+      eventId: z.string().describe("Event short id"),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      date: z.string().optional(),
+      endDate: z.string().optional(),
+      time: z.string().optional(),
+      endTime: z.string().optional(),
+      timezone: z.string().optional(),
+      location: z.string().optional(),
+      venueName: z.string().optional(),
+      capacity: z.number().int().optional(),
+      category: z.string().optional(),
+      imageUrl: z.string().optional(),
+      gates: z
+        .object({
+          mode: z.enum(["any", "all"]).optional(),
+          groups: z.array(z.any()),
+        })
+        .optional(),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: true },
+  },
+  async ({ eventId, ...patch }) =>
+    handle(() =>
+      client.request(`/api/events/${encodeURIComponent(eventId)}`, {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }),
+    ),
+);
+
+server.registerTool(
+  "delete_event",
+  {
+    title: "Delete an event",
+    description:
+      "Permanently delete an event the api-key owner hosts. Requires `events:write`. " +
+      "DESTRUCTIVE — RSVPs and check-ins are removed too. Prefer updating `status` to 'cancelled' " +
+      "(via update_event) if you want to keep the record for attendees.",
+    inputSchema: {
+      eventId: z.string().describe("Event short id"),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
+  },
+  async ({ eventId }) =>
+    handle(() =>
+      client.request(`/api/events/${encodeURIComponent(eventId)}`, { method: "DELETE" }),
+    ),
+);
+
+server.registerTool(
+  "checkin_attendee",
+  {
+    title: "Check in an attendee",
+    description:
+      "Mark an attendee as checked in at the door. Requires `events:write`. " +
+      "Caller must be the event host or a designated check-in staff member. " +
+      "Identify the attendee by their wallet address (the `userId` on their RSVP record).",
+    inputSchema: {
+      eventId: z.string().describe("Event short id"),
+      wallet: z.string().describe("Attendee wallet address (EVM lowercased, or chain-native)"),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: true },
+  },
+  async ({ eventId, wallet }) =>
+    handle(() =>
+      client.request(`/api/events/${encodeURIComponent(eventId)}/checkin`, {
+        method: "POST",
+        body: JSON.stringify({ wallet }),
+      }),
+    ),
+);
+
 // ----- Boot -------------------------------------------------------------
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `irlevents-mcp v0.1.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
+    `irlevents-mcp v0.2.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
   );
 }
 
