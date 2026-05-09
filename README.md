@@ -36,6 +36,24 @@ and more — all on your behalf, using a long-lived `api_*` key you control.
 | `delete_event` | Permanently delete an event (destructive — prefer "cancelled" status via update) |
 | `checkin_attendee` | Mark an attendee as checked in at the door |
 
+### Resources (v0.3.0+) — browsable data without explicit tool calls
+
+| URI | What it returns |
+|---|---|
+| `irlevents://profile/me` | Profile, wallets, cached assets (same as `get_my_profile`) |
+| `irlevents://event/{id}` | Single event by id (same as `get_event`) |
+
+The resource template lists trending events as the discovery surface — your
+client may show them in a "browse" panel.
+
+### Prompts (v0.3.0+) — guided multi-step workflows
+
+| Prompt | What it does |
+|---|---|
+| `find_eligible_event` | Walks `trending_events` → `check_eligibility` → present first match. Optional `city` and `category` args. |
+| `host_a_token_gated_event` | Walks `create_event` with a token gate. Args: title, date, location, contract, chainId. |
+| `explain_my_eligibility` | Reads event + profile + eligibility, explains gate match in plain English. Arg: eventId. |
+
 Sensitive actions (key management, billing, 2FA, OAuth unlink, account delete)
 are **not** exposed — those still require a browser session at irlevents.io.
 

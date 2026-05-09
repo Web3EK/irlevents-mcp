@@ -16,7 +16,7 @@
 //     }
 //   }
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
@@ -39,14 +39,16 @@ const client = createClient({
 });
 
 const server = new McpServer(
-  { name: "irlevents-mcp", version: "0.1.0" },
+  { name: "irlevents-mcp", version: "0.3.0" },
   {
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, resources: {}, prompts: {} },
     instructions:
-      "Tools for the IRLEvents token-gated event platform. Use list_events / " +
-      "trending_events / get_event to discover; check_eligibility before any " +
-      "rsvp_event call (the API will reject ineligible users). Use sync_my_assets " +
-      "sparingly — it hits external NFT providers and is slow.",
+      "Tools, resources, and prompts for the IRLEvents token-gated event platform. " +
+      "Use list_events / trending_events / get_event to discover; check_eligibility " +
+      "before any rsvp_event call (the API will reject ineligible users). Use " +
+      "sync_my_assets sparingly — it hits external NFT providers and is slow. " +
+      "Resources expose irlevents://event/{id} and irlevents://profile/me as " +
+      "browsable URIs; prompts bundle common multi-step workflows.",
   },
 );
 
@@ -411,13 +413,191 @@ server.registerTool(
     ),
 );
 
+// ----- Resources --------------------------------------------------------
+//
+// Resources are browsable URIs the model can read on demand without an
+// explicit tool call. Useful when an event id appears in conversation —
+// the model can pull `irlevents://event/{id}` and have the data inline.
+
+server.registerResource(
+  "profile",
+  "irlevents://profile/me",
+  {
+    title: "My IRLEvents profile",
+    description: "Profile, wallets, and cached on-chain assets for the api-key owner",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    const profile = await client.request("/api/profile");
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(profile, null, 2),
+        },
+      ],
+    };
+  },
+);
+
+server.registerResource(
+  "event",
+  new ResourceTemplate("irlevents://event/{id}", {
+    list: async () => {
+      // List trending events as the discovery surface for this resource template
+      try {
+        const trending = (await client.request<any[]>("/api/events/trending")) || [];
+        return {
+          resources: trending.slice(0, 20).map((ev: any) => ({
+            uri: `irlevents://event/${ev.id}`,
+            name: ev.title || ev.id,
+            description: ev.description?.slice(0, 200) || undefined,
+            mimeType: "application/json",
+          })),
+        };
+      } catch {
+        return { resources: [] };
+      }
+    },
+  }),
+  {
+    title: "IRLEvents event",
+    description: "Single event by short id — title, dates, location, gates, host",
+    mimeType: "application/json",
+  },
+  async (uri, variables) => {
+    const id = String(variables.id);
+    const event = await client.request(`/api/events/${encodeURIComponent(id)}`);
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(event, null, 2),
+        },
+      ],
+    };
+  },
+);
+
+// ----- Prompts ----------------------------------------------------------
+//
+// Prompts are reusable workflow templates the user (or the host UI) can
+// invoke. They guide the model through a multi-step flow rather than
+// leaving every call up to inference.
+
+server.registerPrompt(
+  "find_eligible_event",
+  {
+    title: "Find an event I can attend",
+    description:
+      "Discovers a trending event the user qualifies for and offers to RSVP. " +
+      "Walks: trending_events → check_eligibility on each → present the first match.",
+    argsSchema: {
+      city: z.string().optional().describe("City name to filter by, e.g. 'Las Vegas'"),
+      category: z.string().optional().describe("Event category, e.g. 'meetup', 'conference'"),
+    },
+  },
+  ({ city, category }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text:
+            `Find an upcoming IRLEvents event I'm eligible for${city ? ` in ${city}` : ""}${category ? ` (${category})` : ""}.\n\n` +
+            `Steps:\n` +
+            `1. Call \`trending_events\` (or \`list_events\` with the filters above if specified) to get candidates.\n` +
+            `2. For each candidate, call \`check_eligibility\` with the event id.\n` +
+            `3. Stop at the first event where \`eligible: true\`.\n` +
+            `4. Show me the event title, date, location, and the gate group I qualified through.\n` +
+            `5. Ask before calling \`rsvp_event\` — I want to confirm.\n\n` +
+            `If no events match, say so plainly — don't lower the bar.`,
+        },
+      },
+    ],
+  }),
+);
+
+server.registerPrompt(
+  "host_a_token_gated_event",
+  {
+    title: "Host a new token-gated event",
+    description:
+      "Walks through creating a new event with a token gate. Requires the api key to have `events:write` scope.",
+    argsSchema: {
+      title: z.string().describe("Event title"),
+      date: z.string().describe("ISO date YYYY-MM-DD"),
+      location: z.string().describe("Venue or city"),
+      contract: z.string().describe("EVM contract address of the NFT/token holders qualify with"),
+      chainId: z.string().describe("Chain id, e.g. '1' for Ethereum, '8453' for Base"),
+    },
+  },
+  ({ title, date, location, contract, chainId }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text:
+            `Create a new IRLEvents event with these details:\n` +
+            `- Title: ${title}\n` +
+            `- Date: ${date}\n` +
+            `- Location: ${location}\n` +
+            `- Token gate: holders of contract ${contract} on chain ${chainId} (ERC-721)\n\n` +
+            `Steps:\n` +
+            `1. Call \`create_event\` with title, date, location, and a gates config:\n` +
+            `   { "mode": "any", "groups": [{ "id": "gate_main", "label": "Holders", ` +
+            `"requirements": [{ "chainId": ${chainId}, "standard": "erc721", ` +
+            `"contract": "${contract}", "minBalance": "1" }] }] }\n` +
+            `2. On success, show me the event id and the public URL ` +
+            `(\`https://irlevents.io/events/{id}\`).\n` +
+            `3. Surface any error codes verbatim — TIER_LIMIT_REACHED means I need to upgrade.`,
+        },
+      },
+    ],
+  }),
+);
+
+server.registerPrompt(
+  "explain_my_eligibility",
+  {
+    title: "Why am I (not) eligible for this event?",
+    description:
+      "Explains in plain English whether the user qualifies for an event's token gate, " +
+      "and if not, what they'd need to hold.",
+    argsSchema: {
+      eventId: z.string().describe("Event short id"),
+    },
+  },
+  ({ eventId }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text:
+            `For event ${eventId}:\n\n` +
+            `1. Read the event with \`get_event\` to see the gate config.\n` +
+            `2. Read my profile with \`get_my_profile\` to see what I currently hold.\n` +
+            `3. Call \`check_eligibility\` for the definitive answer.\n` +
+            `4. If I'm eligible, tell me which gate group I matched and via which holding.\n` +
+            `5. If I'm NOT eligible, list the specific contracts/standards each gate group requires ` +
+            `and what I'd need to acquire. Use plain English — don't dump raw JSON.`,
+        },
+      },
+    ],
+  }),
+);
+
 // ----- Boot -------------------------------------------------------------
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `irlevents-mcp v0.2.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
+    `irlevents-mcp v0.3.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
   );
 }
 
