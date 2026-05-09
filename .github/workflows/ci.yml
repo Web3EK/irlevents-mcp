@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run build
+
+      - name: Smoke-test MCP handshake
+        env:
+          IRLEVENTS_API_KEY: api_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          OUTPUT=$(printf '%s\n%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0.0.1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | timeout 10 node dist/index.js 2>/dev/null)
+          TOOL_COUNT=$(echo "$OUTPUT" | grep -o '"name":"[a-z_]*"' | sort -u | wc -l)
+          if [ "$TOOL_COUNT" -lt 12 ]; then
+            echo "::error::Expected 12 tools, got $TOOL_COUNT"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          echo "✓ MCP handshake OK ($TOOL_COUNT tools registered)"

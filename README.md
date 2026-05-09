@@ -142,6 +142,31 @@ printf '%s\n%s\n%s\n' \
 - [OpenAPI spec](https://irlevents.io/api/openapi.json)
 - [Webhook integration guide](https://irlevents.io/api/guides/webhook-guide) — push instead of pull
 
+## Releasing (maintainers)
+
+CI auto-publishes to npm when a `v*.*.*` tag is pushed. Steps:
+
+```bash
+# 1. Bump version in package.json (e.g. 0.1.0 → 0.1.1)
+# 2. Commit
+git commit -am "Release v0.1.1"
+
+# 3. Tag and push
+git tag v0.1.1
+git push && git push --tags
+```
+
+The GitHub Actions workflow (`.github/workflows/publish.yml`) will:
+
+1. Verify the tag matches `package.json` version
+2. Build with `tsc`
+3. Smoke-test the MCP handshake (asserts all 12 tools register)
+4. Publish to npm with provenance attestation
+
+Required GitHub repo secret: **`NPM_TOKEN`** — an npm "Automation" or
+"Publish" token. Generate at <https://www.npmjs.com/settings/_/tokens>,
+then add at *Settings → Secrets and variables → Actions*.
+
 ## License
 
 MIT
