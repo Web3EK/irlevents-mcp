@@ -1,0 +1,51 @@
+{
+  "name": "irlevents-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for IRLEvents — token-gated event platform tools for Claude Desktop, Claude Code, Cursor, Cline, and other MCP-compatible clients.",
+  "type": "module",
+  "bin": {
+    "irlevents-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "irlevents",
+    "events",
+    "web3",
+    "nft",
+    "token-gating"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Web3EK/irlevents-mcp.git"
+  },
+  "homepage": "https://github.com/Web3EK/irlevents-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Web3EK/irlevents-mcp/issues"
+  },
+  "author": "IRLEvents (https://irlevents.io)",
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
