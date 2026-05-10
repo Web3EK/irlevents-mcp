@@ -36,6 +36,22 @@ and more — all on your behalf, using a long-lived `api_*` key you control.
 | `delete_event` | Permanently delete an event (destructive — prefer "cancelled" status via update) |
 | `checkin_attendee` | Mark an attendee as checked in at the door |
 
+### IRLRewards tools (v0.4.0+, require `rewards:read` / `rewards:write`)
+
+The same backend serves both irlevents.io (events) and irlrewards.io (rewards).
+Grant `rewards:*` scopes when you want the agent to also act on the rewards surface.
+
+| Tool | What it does |
+|---|---|
+| `list_rewards` | List active rewards with filters (type, category, featured) |
+| `get_reward` | Single reward by id (gates, supply, creator) |
+| `check_reward_eligibility` | Will I qualify for this reward? |
+| `claim_reward` | Claim on my behalf (re-checks eligibility, may deduct points) |
+| `cancel_reward_claim` | Cancel a pending claim, refund any deducted points |
+| `get_my_points` | My points balance + history |
+| `get_my_claims` | Every reward I've claimed |
+| `get_my_eligible_rewards` | Active rewards whose gates I currently satisfy |
+
 ### Resources (v0.3.0+) — browsable data without explicit tool calls
 
 | URI | What it returns |

@@ -39,7 +39,7 @@ const client = createClient({
 });
 
 const server = new McpServer(
-  { name: "irlevents-mcp", version: "0.3.0" },
+  { name: "irlevents-mcp", version: "0.4.0" },
   {
     capabilities: { tools: {}, resources: {}, prompts: {} },
     instructions:
@@ -413,6 +413,138 @@ server.registerTool(
     ),
 );
 
+// ----- IRLRewards tools (require rewards:read or rewards:write) ---------
+//
+// Same backend serves both irlevents.io (events) and irlrewards.io (rewards).
+// Agents granted rewards:* scopes can read the user's points balance + claim
+// rewards on their behalf in addition to the events surface.
+
+server.registerTool(
+  "list_rewards",
+  {
+    title: "List active rewards",
+    description:
+      "List active rewards on IRLRewards. Filter by type, category, status, or featured. " +
+      "Requires `rewards:read` scope.",
+    inputSchema: {
+      type: z.string().optional().describe("'discount' | 'merch' | 'digital' | 'loyalty_redeem' | 'airdrop'"),
+      category: z.string().optional(),
+      featured: z.boolean().optional(),
+      sort: z.enum(["newest", "ending_soon", "popular"]).optional(),
+      limit: z.number().int().min(1).max(100).optional().default(20),
+      offset: z.number().int().min(0).optional().default(0),
+      search: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (args) =>
+    handle(() =>
+      client.request("/api/rewards", { query: args as Record<string, any> }),
+    ),
+);
+
+server.registerTool(
+  "get_reward",
+  {
+    title: "Get reward details",
+    description:
+      "Fetch a single reward by id. Returns title, description, type, image, gates (if token-gated), " +
+      "remaining supply (if capped), and creator info. Requires `rewards:read`.",
+    inputSchema: { rewardId: z.string().describe("Reward id") },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ rewardId }) =>
+    handle(() => client.request(`/api/rewards/${encodeURIComponent(rewardId)}`)),
+);
+
+server.registerTool(
+  "check_reward_eligibility",
+  {
+    title: "Check whether I can claim this reward",
+    description:
+      "Returns { eligible, reason } for the api-key owner against the given reward's gates. " +
+      "Always call this before `claim_reward`. Requires `rewards:read`.",
+    inputSchema: { rewardId: z.string() },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({ rewardId }) =>
+    handle(() =>
+      client.request(`/api/rewards/${encodeURIComponent(rewardId)}/eligibility`),
+    ),
+);
+
+server.registerTool(
+  "claim_reward",
+  {
+    title: "Claim a reward on the user's behalf",
+    description:
+      "Submit a claim against the reward. The API re-checks eligibility, deducts points " +
+      "(for loyalty_redeem rewards), and issues a claim record. Failure modes: " +
+      "NOT_ELIGIBLE, ALREADY_CLAIMED, REWARD_EXHAUSTED, INSUFFICIENT_POINTS. " +
+      "Requires `rewards:write`. Always call check_reward_eligibility first.",
+    inputSchema: {
+      rewardId: z.string(),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  },
+  async ({ rewardId }) =>
+    handle(() =>
+      client.request(`/api/rewards/${encodeURIComponent(rewardId)}/claim`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    ),
+);
+
+server.registerTool(
+  "cancel_reward_claim",
+  {
+    title: "Cancel a pending reward claim",
+    description: "Cancel the user's pending claim on a reward. Refunds any deducted points. Requires `rewards:write`.",
+    inputSchema: { rewardId: z.string() },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
+  },
+  async ({ rewardId }) =>
+    handle(() =>
+      client.request(`/api/rewards/${encodeURIComponent(rewardId)}/claim`, { method: "DELETE" }),
+    ),
+);
+
+server.registerTool(
+  "get_my_points",
+  {
+    title: "Get my IRLRewards points balance and history",
+    description: "Returns the user's current points balance plus their points-history ledger. Requires `rewards:read`.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async () => handle(() => client.request("/api/my/points")),
+);
+
+server.registerTool(
+  "get_my_claims",
+  {
+    title: "Get my reward claim history",
+    description:
+      "List every reward I've claimed, with status (pending / fulfilled / canceled) and claim date. " +
+      "Requires `rewards:read`.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async () => handle(() => client.request("/api/my/claims")),
+);
+
+server.registerTool(
+  "get_my_eligible_rewards",
+  {
+    title: "Get rewards I'm currently eligible to claim",
+    description: "Returns the subset of active rewards whose gates the user satisfies based on cached on-chain assets. Requires `rewards:read`.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async () => handle(() => client.request("/api/my/rewards")),
+);
+
 // ----- Resources --------------------------------------------------------
 //
 // Resources are browsable URIs the model can read on demand without an
@@ -597,7 +729,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `irlevents-mcp v0.3.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
+    `irlevents-mcp v0.4.0 ready (base: ${client.base}). Awaiting MCP requests on stdio.`,
   );
 }
 
